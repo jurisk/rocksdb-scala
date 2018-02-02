@@ -1,13 +1,16 @@
 package com.github.jurisk.rocksdb
 
+import java.io.File
+
 import akka.util.ByteString
 import com.github.jurisk.filecache.FileCache
 import org.rocksdb._
 import org.rocksdb.util.SizeUnit
+
 import scala.concurrent.blocking
 import scala.concurrent.{ExecutionContext, Future}
 
-class RocksDbStore(fileName: String) extends FileCache {
+class RocksDbStore(path: String, ttlSeconds: Option[Int]) extends FileCache {
   private var isOpen = false
 
   RocksDB.loadLibrary()
@@ -20,14 +23,23 @@ class RocksDbStore(fileName: String) extends FileCache {
     .setCompressionType(CompressionType.SNAPPY_COMPRESSION)
     .setCompactionStyle(CompactionStyle.UNIVERSAL)
 
-  private val store = RocksDB.open(options, fileName )
+  private val store = ttlSeconds map { ttl =>
+    TtlDB.open(options, path, ttl, false)
+  } getOrElse {
+    RocksDB.open(options, path)
+  }
+
   isOpen = true
 
-  override def getByByteKey(key: Array[Byte])(implicit ec: ExecutionContext): Future[ByteString] = {
+  override def getByByteKey(key: Array[Byte], updateTtl: Boolean)(implicit ec: ExecutionContext): Future[ByteString] = {
     assert(isOpen)
     Future {
       blocking {
-        Some(store.get(key)).map(ByteString.apply).getOrElse(sys.error(s"Failed to find entry for $key"))
+        val result = Some(store.get(key)).map(ByteString.apply).getOrElse(sys.error(s"Failed to find entry for $key"))
+        if (updateTtl) { // we update TTL by writing it again
+          putByByteKey(key, result)
+        }
+        result
       }
     }
   }
@@ -48,6 +60,11 @@ class RocksDbStore(fileName: String) extends FileCache {
         store.delete(key)
       }
     }
+  }
+
+  override def deleteDatabase(): Unit = {
+    val file = new File(path)
+    file.delete()
   }
 
   def shutdown(): Unit = {
