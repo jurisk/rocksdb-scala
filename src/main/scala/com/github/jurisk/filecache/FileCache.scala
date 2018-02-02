@@ -27,5 +27,7 @@ trait FileCache {
     deleteByByteKey(key.getBytes(UTF8))
   }
 
+  def compact(): Unit
+
   def deleteDatabase(): Unit
 }

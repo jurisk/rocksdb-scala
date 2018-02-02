@@ -31,6 +31,10 @@ class RocksDbStore(path: String, ttlSeconds: Option[Int]) extends FileCache {
 
   isOpen = true
 
+  override def compact(): Unit = {
+    store.compactRange()
+  }
+
   override def getByByteKey(key: Array[Byte], updateTtl: Boolean)(implicit ec: ExecutionContext): Future[Option[ByteString]] = {
     assert(isOpen)
     Future {

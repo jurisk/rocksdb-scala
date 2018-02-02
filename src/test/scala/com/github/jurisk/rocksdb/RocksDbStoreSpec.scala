@@ -12,12 +12,12 @@ import scala.concurrent.duration._
 import scala.concurrent.Await
 import scala.concurrent.ExecutionContext.Implicits.global
 import org.scalatest.concurrent.Eventually._
-import org.scalatest.time.{Minutes, Span}
+import org.scalatest.time.{Seconds, Span}
 
 class RocksDbStoreSpec extends FlatSpec {
   private val UTF8 = StandardCharsets.UTF_8.name
 
-  def createStore(ttlSeconds: Option[Int]): FileCache = {
+  private def createStore(ttlSeconds: Option[Int]): FileCache = {
     val tmpFile = File.createTempFile("rocksdb", ".db")
     val tmpFileName = tmpFile.getAbsolutePath
     tmpFile.delete
@@ -29,26 +29,33 @@ class RocksDbStoreSpec extends FlatSpec {
     UUID.randomUUID().toString
   }
 
-  def putSync(store: FileCache, key: String, value: String): Unit = {
+  private def putSync(store: FileCache, key: String, value: String): Unit = {
     val f = store.put(key, ByteString(value.getBytes(UTF8)))
     Await.result(f, 1.second)
   }
 
-  def getSync(store: FileCache, key: String, updateTtl: Boolean): Option[String] = {
+  private def getSync(store: FileCache, key: String, updateTtl: Boolean): Option[String] = {
     val f = store.get(key, updateTtl)
     val result = Await.result(f, 1.second)
     result.map(_.utf8String)
   }
 
-  def deleteSync(store: FileCache, key: String): Unit = {
+  private def deleteSync(store: FileCache, key: String): Unit = {
     val f = store.delete(key)
     Await.result(f, 1.second)
   }
 
-  def randomData(size: Int): Map[String, String] = {
+  private def randomData(size: Int): Map[String, String] = {
     ((0 to size) map { _ =>
       random() -> random()
     }).toMap
+  }
+
+  private def checkData(store: FileCache, data: Map[String, String], updateTtl: Boolean): Unit = {
+    data foreach { case (k, v) =>
+      val result = getSync(store, k, updateTtl = updateTtl)
+      require(result.contains(v), s"$result does not equal $v")
+    }
   }
 
   it should "put, get and delete" in {
@@ -59,10 +66,7 @@ class RocksDbStoreSpec extends FlatSpec {
       putSync(store, k, v)
     }
 
-    data foreach { case (k, v) =>
-      val result = getSync(store, k, updateTtl = false)
-      require(result.contains(v), s"$result does not equal $v")
-    }
+    checkData(store, data, updateTtl = true)
 
     data.keys foreach { k =>
       deleteSync(store, k)
@@ -85,12 +89,15 @@ class RocksDbStoreSpec extends FlatSpec {
       putSync(store, k, v)
     }
 
-    data foreach { case (k, v) =>
-      val result = getSync(store, k, updateTtl = true)
-      require(result.contains(v), s"$result does not equal $v")
+    (0 to 5) foreach { _ =>
+      store.compact() // this should not clear data yet as not enough time has passed since last TTL refreshes
+      checkData(store, data, updateTtl = true)
+      Thread.sleep(500) // half of TTL
     }
 
-    eventually(timeout(Span(10, Minutes))) {
+    eventually(timeout(Span(30, Seconds))) { // however eventually they should get cleared
+      store.compact()
+
       data.keys foreach { k =>
         val result = getSync(store, k, updateTtl = false)
         require(result.isEmpty, s"Expected empty but got $result")
