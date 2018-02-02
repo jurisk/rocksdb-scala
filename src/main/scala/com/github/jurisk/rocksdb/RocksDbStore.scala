@@ -1,12 +1,13 @@
 package com.github.jurisk.rocksdb
 
-import java.nio.charset.StandardCharsets
-
+import akka.util.ByteString
+import com.github.jurisk.filecache.FileCache
 import org.rocksdb._
 import org.rocksdb.util.SizeUnit
+import scala.concurrent.blocking
+import scala.concurrent.{ExecutionContext, Future}
 
-class RocksDbStore(fileName: String) {
-  private val UTF8 = StandardCharsets.UTF_8.name
+class RocksDbStore(fileName: String) extends FileCache {
   private var isOpen = false
 
   RocksDB.loadLibrary()
@@ -22,22 +23,31 @@ class RocksDbStore(fileName: String) {
   private val store = RocksDB.open(options, fileName )
   isOpen = true
 
-  def putBytes(key: Array[Byte], value: Array[Byte]): Unit = {
+  override def getByByteKey(key: Array[Byte])(implicit ec: ExecutionContext): Future[ByteString] = {
     assert(isOpen)
-    store.put(key, value)
+    Future {
+      blocking {
+        Some(store.get(key)).map(ByteString.apply).getOrElse(sys.error(s"Failed to find entry for $key"))
+      }
+    }
   }
 
-  def putString(key: String, value: String): Unit = {
-    putBytes(key.getBytes(UTF8), value.getBytes(UTF8))
-  }
-
-  def getBytes(key: Array[Byte]): Option[Array[Byte]] = {
+  override def putByByteKey(key: Array[Byte], byteString: ByteString)(implicit ec: ExecutionContext): Future[Unit] = {
     assert(isOpen)
-    Some(store.get(key))
+    Future {
+      blocking {
+        store.put(key, byteString.toArray)
+      }
+    }
   }
 
-  def getString(key: String): Option[String]= {
-    getBytes(key.getBytes(UTF8)).map(new String(_, UTF8))
+  override def deleteByByteKey(key: Array[Byte])(implicit ec: ExecutionContext): Future[Unit] = {
+    assert(isOpen)
+    Future {
+      blocking {
+        store.delete(key)
+      }
+    }
   }
 
   def shutdown(): Unit = {
