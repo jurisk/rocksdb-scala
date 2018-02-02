@@ -9,9 +9,9 @@ import scala.concurrent.{ExecutionContext, Future}
 trait FileCache {
   private val UTF8 = StandardCharsets.UTF_8.name
 
-  def getByByteKey(key: Array[Byte], updateTtl: Boolean)(implicit ec: ExecutionContext): Future[ByteString]
+  def getByByteKey(key: Array[Byte], updateTtl: Boolean)(implicit ec: ExecutionContext): Future[Option[ByteString]]
 
-  def get(key: String, updateTtl: Boolean)(implicit ec: ExecutionContext): Future[ByteString] = {
+  def get(key: String, updateTtl: Boolean)(implicit ec: ExecutionContext): Future[Option[ByteString]] = {
     getByByteKey(key.getBytes(UTF8), updateTtl)
   }
 

@@ -31,14 +31,18 @@ class RocksDbStore(path: String, ttlSeconds: Option[Int]) extends FileCache {
 
   isOpen = true
 
-  override def getByByteKey(key: Array[Byte], updateTtl: Boolean)(implicit ec: ExecutionContext): Future[ByteString] = {
+  override def getByByteKey(key: Array[Byte], updateTtl: Boolean)(implicit ec: ExecutionContext): Future[Option[ByteString]] = {
     assert(isOpen)
     Future {
       blocking {
-        val result = Some(store.get(key)).map(ByteString.apply).getOrElse(sys.error(s"Failed to find entry for $key"))
+        val result = Option(store.get(key)).map(ByteString.apply)
+
         if (updateTtl) { // we update TTL by writing it again
-          putByByteKey(key, result)
+          result foreach { result =>
+            putByByteKey(key, result)
+          }
         }
+
         result
       }
     }
