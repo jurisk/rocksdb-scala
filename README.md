@@ -1,3 +1,3 @@
 # rocksdb-scala
 
-"Hello world" on RocksDB from Scala
+Simple Scala wrapper for [RocksDb](http://rocksdb.org/) client.
