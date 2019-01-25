@@ -14,6 +14,11 @@ trait FileCache {
   def get(key: String, updateTtl: Boolean)(implicit ec: ExecutionContext): Future[Option[ByteString]] = {
     getByByteKey(key.getBytes(UTF8), updateTtl)
   }
+  
+  def update(key: String, byteString: ByteString, updateTtl: Boolean)(implicit ec: ExecutionContext): Future[Unit] = {
+    deleteByByteKey(key.getBytes(UTF8))
+    putByByteKey(key.getBytes(UTF8), byteString)
+  }
 
   def putByByteKey(key: Array[Byte], byteString: ByteString)(implicit ec: ExecutionContext): Future[Unit]
 
